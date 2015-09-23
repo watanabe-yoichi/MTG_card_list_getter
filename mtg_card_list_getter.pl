@@ -18,6 +18,8 @@ use constant {
     # Wisdom Guild掲載のエキスパンション毎のカードリスト
     TARGET_URL =>
         'http://whisper.wisdom-guild.net/cardlist/BornoftheGods/',
+    BASE_URL =>
+        'http://whisper.wisdom-guild.net/cardlist/',
 
     # IE8のフリをする
     USER_AGENT =>
@@ -98,6 +100,12 @@ sub extract_card_info {
 # -------------------------------------
 my $self = shift;
 
+# 想定と違うURLが指定されたらreturn
+return unless (TARGET_URL =~ BASE_URL);
+
+my $filename = $';
+chop $filename;
+
 # カードリストがあるページの全内容を取得
 my $tree_info = parse_content(TARGET_URL);
 my $tree      = $tree_info->{tree};
@@ -118,13 +126,14 @@ for my $link (@{ $links[0] }) {
 my $all_card_info = extract_card_info(@target_urls);
 
 # CSVに書き出す
+
 my $csv = Text::CSV_XS->new({
     sep_char => ',',
     binary   => 1,
     eol      => "\n"
 });
 my $dir  = Path::Class::Dir->new(cwd());
-my $file = $dir->file("test.csv");
+my $file = $dir->file("$filename.csv");
 
 # 見出しを出力
 my $fh = $file->open('w') or die $!;
@@ -137,6 +146,7 @@ for my $card_info (@{ $all_card_info }) {
     my @row;
     for my $key (@{ &CONTENT_TYPES }) {
         if (exists $card_info->{$key}) {
+            # TODO: アーティファクトのマナコストが負の値になっちゃう
             push @row, $card_info->{$key};
         }
         else {
