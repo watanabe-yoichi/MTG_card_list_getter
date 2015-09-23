@@ -23,7 +23,7 @@ excute : perl mtg_card_list_getter
 use constant {
     # Wisdom Guild掲載のエキスパンション毎のカードリスト
     TARGET_URL =>
-        'http://whisper.wisdom-guild.net/cardlist/BornoftheGods/',
+        'http://whisper.wisdom-guild.net/cardlist/BattleforZendikar/',
 
     # チェック用
     BASE_URL =>
