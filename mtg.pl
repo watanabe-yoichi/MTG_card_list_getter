@@ -9,15 +9,22 @@ use HTML::TreeBuilder;
 use Encode;
 use Encode 'decode';
 use Encode::Guess;
+use Text::CSV;
+use Cwd;
+use Path::Class::Dir;
 
 use constant {
-    # ユーザ入力項目、Wisdom Guild掲載のエキスパンション毎のカードリスト
+    # ユーザ入力項目
+    # Wisdom Guild掲載のエキスパンション毎のカードリスト
     TARGET_URL =>
-        'http://whisper.wisdom-guild.net/cardlist/DragonsofTarkir/',
+        'http://whisper.wisdom-guild.net/cardlist/BornoftheGods/',
 
     # IE8のフリをする
     USER_AGENT =>
         "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; Trident/4.0)",
+
+    # カードの項目
+    COLUMNS => [qw/ name cost type text oracle pt flavor illust info/],
 };
 
 sub parse_content {
@@ -59,7 +66,7 @@ sub extract_card_info {
 
         my $card_info;
         my $number = -1;
-        PARAM: for my $key (qw/ name cost type text oracle pt flavor illust info/) {
+        PARAM: for my $key (@{ &COLUMNS }) {
             $number++;
 
             unless ($rows[$number]) {
@@ -71,6 +78,7 @@ sub extract_card_info {
         }
         push @all_card_info, $card_info;
 
+        use DDP; p $card_info;
         $tree = $tree->delete;
     }
 
@@ -101,7 +109,28 @@ for my $link (@{ $links[0] }) {
 # 各カードの情報を取得
 my $all_card_info = extract_card_info(@target_links);
 
-warn scalar @{ $all_card_info };
+# CSVに書き出す
+my $csv = Text::CSV_XS->new({
+    sep_char => ',',
+    binary   => 1,
+    eol      => "\n"
+});
+my $dir  = Path::Class::Dir->new(cwd());
+my $file = $dir->file("test.csv");
+
+for my $card_info (@{ $all_card_info }) {
+    my @sorted_keys = sort (keys %{ $card_info });
+    my @row;
+    for my $key (@sorted_keys) {
+        push @row, $card_info->{$key};
+    }
+
+    my $fh = $file->open('a') or die $!;
+    $csv->print($fh, \@row) if @row;
+    $fh->close;
+}
+
+
 $tree = $tree->delete;
 
 1;
