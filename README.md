@@ -12,9 +12,14 @@
 一度CSVにしてしまえば、、、後は思う存分やりたいことをやるだけです。
 
 ### 使い方  
-1. `mtg_card_list_getter.pl` の固定値に特定のエキスパンションのURLを入力する
-2. コマンドラインで `perl mtg_card_list_getter.pl` を実行する
-3. 1分ほど待つ ([出力結果サンプル](https://github.com/watanabe-yoichi/MTG_card_list_getter/blob/master/BornoftheGods.csv))
+* `mtg_card_list_getter.pl` の固定値に特定のエキスパンションのURLを入力する
+```perl
+use constant {
+  TARGET_URL => 'http://whisper.wisdom-guild.net/cardlist/BornoftheGods/',
+}
+```
+* コマンドラインで `perl mtg_card_list_getter.pl` を実行する
+* 1分ほど待つ ([出力結果サンプル](https://github.com/watanabe-yoichi/MTG_card_list_getter/blob/master/BornoftheGods.csv))
 
 ### その他、注意事項など  
 * Wisdom Guild 様の仕様に依存しているため、「当該サイトにカードデータが入力されていない」、「サイトのURLやレイアウトが変更になった」、などの際には望んだ結果が得られなくなる場合があります。
