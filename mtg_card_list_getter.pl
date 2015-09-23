@@ -9,22 +9,44 @@ use HTML::TreeBuilder;
 use Encode;
 use Encode 'decode';
 use Encode::Guess;
-use Text::CSV;
 use Cwd;
+use Text::CSV;
 use Path::Class::Dir;
 
+=head1 SYNOPSIS
+
+prepare: constant の TARGET_URL にエキスパンション毎のカード一覧URLを入れる
+excute : perl mtg_card_list_getter
+
+=cut
+
 use constant {
-    # ユーザ入力項目
     # Wisdom Guild掲載のエキスパンション毎のカードリスト
     TARGET_URL =>
         'http://whisper.wisdom-guild.net/cardlist/BornoftheGods/',
+
+    # チェック用
+    BASE_URL =>
+        'http://whisper.wisdom-guild.net/cardlist/',
 
     # IE8のフリをする
     USER_AGENT =>
         "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; Trident/4.0)",
 
-    # カードの項目
-    COLUMNS => [qw/ name cost type text oracle pt flavor illust info/],
+    # カード項目
+    CONTENT_TYPES => [qw/
+        カード名
+        マナコスト
+        タイプ
+        テキスト
+        オラクル
+        Ｐ／Ｔ
+        忠誠度
+        フレーバ
+        イラスト
+        セット等
+        再録
+    /],
 };
 
 sub parse_content {
@@ -59,26 +81,22 @@ sub extract_card_info {
         my $tree      = $tree_info->{tree};
         my $encoder   = $tree_info->{encoder};
 
-        # カード情報を取得
+        # カード情報テーブルを取得
         my @rows = $tree->look_down(
             'class', 'wg-whisper-card-detail'
-        )->look_down(_tag => 'table')->look_down(_tag => 'td');
+        )->look_down(_tag => 'tr');
 
+        # 各パラメータを取得
         my $card_info;
-        my $number = -1;
-        PARAM: for my $key (@{ &COLUMNS }) {
-            $number++;
+        for my $row (@rows) {
+            my $type    = $row->look_down(_tag => 'th')->as_text;
+            my $content = $row->look_down(_tag => 'td')->as_text;
 
-            unless ($rows[$number]) {
-                $card_info->{$key} = '';
-                next PARAM;
-            }
-
-            $card_info->{$key} = encode($encoder->name, $rows[$number]->as_text);
+            $card_info->{$type} = encode('utf-8', $content);
         }
-        push @all_card_info, $card_info;
+        warn "extract: ".$card_info->{カード名};
 
-        use DDP; p $card_info;
+        push @all_card_info, $card_info;
         $tree = $tree->delete;
     }
 
@@ -90,6 +108,12 @@ sub extract_card_info {
 # -------------------------------------
 my $self = shift;
 
+# 想定と違うURLが指定されたらreturn
+return unless (TARGET_URL =~ BASE_URL);
+
+my $filename = $';
+chop $filename;
+
 # カードリストがあるページの全内容を取得
 my $tree_info = parse_content(TARGET_URL);
 my $tree      = $tree_info->{tree};
@@ -98,39 +122,54 @@ my $tree      = $tree_info->{tree};
 my @links = $tree->extract_links();
 
 # 個別のカード情報へのリンクのみ抽出
-my @target_links;
+my @target_urls;
 for my $link (@{ $links[0] }) {
     my $url = $link->[0];
     if ($url =~ /http:\/\/whisper\.wisdom-guild\.net\/card\/*/) {
-        push @target_links, $url;
+        push @target_urls, $url;
     }
 }
 
 # 各カードの情報を取得
-my $all_card_info = extract_card_info(@target_links);
+my $all_card_info = extract_card_info(@target_urls);
 
 # CSVに書き出す
+
 my $csv = Text::CSV_XS->new({
     sep_char => ',',
     binary   => 1,
     eol      => "\n"
 });
 my $dir  = Path::Class::Dir->new(cwd());
-my $file = $dir->file("test.csv");
+my $file = $dir->file("$filename.csv");
 
+# 見出しを出力
+my $fh = $file->open('w') or die $!;
+$csv->print($fh, &CONTENT_TYPES);
+$fh->close;
+
+# カード情報の出力
+my $card_num;
 for my $card_info (@{ $all_card_info }) {
-    my @sorted_keys = sort (keys %{ $card_info });
     my @row;
-    for my $key (@sorted_keys) {
-        push @row, $card_info->{$key};
+    for my $key (@{ &CONTENT_TYPES }) {
+        if (exists $card_info->{$key}) {
+            # TODO: アーティファクトのマナコストが負の値になっちゃう
+            push @row, $card_info->{$key};
+        }
+        else {
+            push @row, '-';
+        }
     }
 
     my $fh = $file->open('a') or die $!;
     $csv->print($fh, \@row) if @row;
     $fh->close;
+
+    $card_num++;
 }
 
-
 $tree = $tree->delete;
+warn "done! output $card_num cards" ;
 
 1;
