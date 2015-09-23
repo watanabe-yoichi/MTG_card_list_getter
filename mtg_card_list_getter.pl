@@ -49,8 +49,79 @@ use constant {
     /],
 };
 
+
+# 想定と違うURLが指定されたらreturn
+unless (TARGET_URL =~ BASE_URL) {
+    warn 'wrong url! expecting like http://whisper.wisdom-guild.net/cardlist/~';
+    return;
+};
+
+my $csv_info = setup_csv($');
+my $csv  = $csv_info->{csv};
+my $file = $csv_info->{file};
+
+# カードリストがあるページの全内容を取得
+my $tree_info = parse_content(TARGET_URL);
+my $tree      = $tree_info->{tree};
+
+# 一覧ページからカード毎のURLを抽出
+my @card_urls = extract_card_urls($tree);
+
+# 各URLからカードの情報を抽出
+my $all_card_info = extract_card_info(@card_urls);
+
+# カード情報の出力
+my $content_fh = $file->open('a') or die $!;
+my $card_num;
+for my $card_info (@{ $all_card_info }) {
+    my @row;
+    for my $key (@{ &CONTENT_TYPES }) {
+        if (exists $card_info->{$key}) {
+            push @row, $card_info->{$key};
+        }
+        else {
+            push @row, '-';
+        }
+    }
+    $csv->print($content_fh, \@row) if @row;
+
+    $card_num++;
+}
+$content_fh->close;
+
+$tree = $tree->delete;
+warn "done! output $card_num cards" ;
+
+# --------------------------------------------------------
+
+sub setup_csv {
+    my $filename = shift;
+
+    # CSV準備
+    my $csv = Text::CSV_XS->new({
+        sep_char => ',',
+        binary   => 1,
+        eol      => "\n"
+    });
+
+    # ファイル準備
+    chop $filename; # 末尾の / を削除
+    my $dir  = Path::Class::Dir->new(cwd());
+    my $file = $dir->file("$filename.csv");
+
+    # 見出しを出力
+    my $type_fh = $file->open('w') or die $!;
+    $csv->print($type_fh, &CONTENT_TYPES);
+    $type_fh->close;
+
+    return +{
+        csv  => $csv,
+        file => $file,
+    };
+}
+
 sub parse_content {
-    (my $url)  = @_;
+    my $url  = shift;
 
     # LWPを使ってサイトにアクセスし、HTMLの内容を取得する
     my $ua = LWP::UserAgent->new('agent' => USER_AGENT);
@@ -71,12 +142,30 @@ sub parse_content {
     };
 }
 
+sub extract_card_urls {
+    my $tree = shift;
+
+    # URLから全てのリンクを抽出
+    my @links = $tree->extract_links();
+
+    # 個別のカード情報へのリンクのみ抽出
+    my @target_urls;
+    for my $link (@{ $links[0] }) {
+        my $url = $link->[0];
+        if ($url =~ /http:\/\/whisper\.wisdom-guild\.net\/card\/*/) {
+            push @target_urls, $url;
+        }
+    }
+
+    return @target_urls;
+}
+
 sub extract_card_info {
-    (my @urls)  = @_;
+    my @urls  = @_;
 
     my $count = 0;
     my @all_card_info;
-    CARD: for my $url (@urls) {
+    for my $url (@urls) {
         my $tree_info = parse_content($url);
         my $tree      = $tree_info->{tree};
         my $encoder   = $tree_info->{encoder};
@@ -102,74 +191,5 @@ sub extract_card_info {
 
     return \@all_card_info;
 }
-
-# -------------------------------------
-# ここからメインの関数
-# -------------------------------------
-my $self = shift;
-
-# 想定と違うURLが指定されたらreturn
-return unless (TARGET_URL =~ BASE_URL);
-
-my $filename = $';
-chop $filename;
-
-# カードリストがあるページの全内容を取得
-my $tree_info = parse_content(TARGET_URL);
-my $tree      = $tree_info->{tree};
-
-# URLから全てのリンクを抽出
-my @links = $tree->extract_links();
-
-# 個別のカード情報へのリンクのみ抽出
-my @target_urls;
-for my $link (@{ $links[0] }) {
-    my $url = $link->[0];
-    if ($url =~ /http:\/\/whisper\.wisdom-guild\.net\/card\/*/) {
-        push @target_urls, $url;
-    }
-}
-
-# 各カードの情報を取得
-my $all_card_info = extract_card_info(@target_urls);
-
-# CSVに書き出す
-
-my $csv = Text::CSV_XS->new({
-    sep_char => ',',
-    binary   => 1,
-    eol      => "\n"
-});
-my $dir  = Path::Class::Dir->new(cwd());
-my $file = $dir->file("$filename.csv");
-
-# 見出しを出力
-my $fh = $file->open('w') or die $!;
-$csv->print($fh, &CONTENT_TYPES);
-$fh->close;
-
-# カード情報の出力
-my $card_num;
-for my $card_info (@{ $all_card_info }) {
-    my @row;
-    for my $key (@{ &CONTENT_TYPES }) {
-        if (exists $card_info->{$key}) {
-            # TODO: アーティファクトのマナコストが負の値になっちゃう
-            push @row, $card_info->{$key};
-        }
-        else {
-            push @row, '-';
-        }
-    }
-
-    my $fh = $file->open('a') or die $!;
-    $csv->print($fh, \@row) if @row;
-    $fh->close;
-
-    $card_num++;
-}
-
-$tree = $tree->delete;
-warn "done! output $card_num cards" ;
 
 1;
