@@ -13,11 +13,19 @@ use Cwd;
 use Text::CSV;
 use Path::Class::Dir;
 
+=head1 SYNOPSIS
+
+prepare: constant の TARGET_URL にエキスパンション毎のカード一覧URLを入れる
+excute : perl mtg_card_list_getter
+
+=cut
+
 use constant {
-    # ユーザ入力項目
     # Wisdom Guild掲載のエキスパンション毎のカードリスト
     TARGET_URL =>
         'http://whisper.wisdom-guild.net/cardlist/BornoftheGods/',
+
+    # チェック用
     BASE_URL =>
         'http://whisper.wisdom-guild.net/cardlist/',
 
