@@ -12,26 +12,19 @@ use Encode::Guess;
 use Cwd;
 use Text::CSV;
 use Path::Class::Dir;
+use Encode;
 
 =head1 SYNOPSIS
 
-prepare: constant の TARGET_URL にエキスパンション毎のカード一覧URLを入れる
-excute : perl mtg_card_list_getter
+excute : perl mtg_card_list_getter.pl [cardlist name]
+
+ex) perl mtg_card_list_getter.pl Kaladesh
 
 =cut
 
 use constant {
-    # Wisdom Guild掲載のエキスパンション毎のカードリスト
-    TARGET_URL =>
-        'http://whisper.wisdom-guild.net/cardlist/BattleforZendikar/',
-
-    # チェック用
-    BASE_URL =>
-        'http://whisper.wisdom-guild.net/cardlist/',
-
     # IE8のフリをする
-    USER_AGENT =>
-        "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; Trident/4.0)",
+    USER_AGENT => "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; Trident/4.0)",
 
     # カード項目
     CONTENT_TYPES => [qw/
@@ -49,20 +42,20 @@ use constant {
     /],
 };
 
-
-# 想定と違うURLが指定されたらreturn
-unless (TARGET_URL =~ BASE_URL) {
-    warn 'wrong url! expecting like http://whisper.wisdom-guild.net/cardlist/~';
-    return;
-};
+my $list_name  = shift @ARGV;
+my $TARGET_URL = sprintf(
+    "http://whisper.wisdom-guild.net/cardlist/%s", $list_name
+);
 
 my $csv_info = setup_csv($');
 my $csv  = $csv_info->{csv};
 my $file = $csv_info->{file};
 
 # カードリストがあるページの全内容を取得
-my $tree_info = parse_content(TARGET_URL);
+my $tree_info = parse_content($TARGET_URL);
 my $tree      = $tree_info->{tree};
+
+print "start extract $list_name cards.\n" ;
 
 # 一覧ページからカード毎のURLを抽出
 my @card_urls = extract_card_urls($tree);
@@ -73,6 +66,7 @@ my $all_card_info = extract_card_info(@card_urls);
 # カード情報の出力
 my $content_fh = $file->open('a') or die $!;
 my $card_num;
+my @rows;
 for my $card_info (@{ $all_card_info }) {
     my @row;
     for my $key (@{ &CONTENT_TYPES }) {
@@ -83,20 +77,18 @@ for my $card_info (@{ $all_card_info }) {
             push @row, '-';
         }
     }
-    $csv->print($content_fh, \@row) if @row;
-
+    push @rows, \@row;
     $card_num++;
 }
+$csv->print($content_fh, $_) for @rows;
 $content_fh->close;
 
 $tree = $tree->delete;
-warn "done! output $card_num cards" ;
+print "finished! extract $card_num cards.\n" ;
 
 # --------------------------------------------------------
 
 sub setup_csv {
-    my $filename = shift;
-
     # CSV準備
     my $csv = Text::CSV_XS->new({
         sep_char => ',',
@@ -105,13 +97,13 @@ sub setup_csv {
     });
 
     # ファイル準備
-    chop $filename; # 末尾の / を削除
     my $dir  = Path::Class::Dir->new(cwd());
-    my $file = $dir->file("$filename.csv");
+    my $file = $dir->file("$list_name.csv");
 
     # 見出しを出力
     my $type_fh = $file->open('w') or die $!;
-    $csv->print($type_fh, &CONTENT_TYPES);
+    my @encoded_content = map { encode('utf-8', $_) } @{ &CONTENT_TYPES };
+    $csv->print($type_fh, \@encoded_content);
     $type_fh->close;
 
     return +{
@@ -183,7 +175,7 @@ sub extract_card_info {
 
             $card_info->{$type} = encode('utf-8', $content);
         }
-        warn "extract: ".$card_info->{カード名};
+        print sprintf("extract: %s\n", $card_info->{カード名});
 
         push @all_card_info, $card_info;
         $tree = $tree->delete;
